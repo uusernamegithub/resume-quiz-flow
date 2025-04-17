@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
@@ -55,10 +56,10 @@ const Quiz = () => {
       // Increment answered questions count
       setQuestionsAnswered(prev => prev + 1);
       
-      // If we've answered 5 questions, end the quiz
+      // If we've answered 5 questions, end the quiz and proceed to HR question
       if (questionsAnswered >= 4) {
-        toast.success("Assessment completed! Thank you for taking the quiz.");
-        navigate('/'); // Return to home or redirect to results page
+        toast.success("MCQ assessment completed!");
+        navigate('/hr-question'); // Redirect to HR question page
         return;
       }
       
