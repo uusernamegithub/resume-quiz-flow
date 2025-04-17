@@ -1,5 +1,4 @@
-
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,91 +12,97 @@ const HRQuestion = () => {
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [audioURL, setAudioURL] = useState<string | null>(null);
+  const [hrQuestion, setHrQuestion] = useState("");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const navigate = useNavigate();
-  
-  // Example HR question - in a real app you'd fetch this from an API
-  const hrQuestion = "Tell me about a time you faced a challenging situation at work and how you resolved it.";
+
+  // Fetch HR question from API
+  useEffect(() => {
+    const fetchQuestion = async () => {
+      try {
+        const response = await fetch('/evalverse/interview');
+        const data = await response.json();
+        setHrQuestion(data.question_text);
+      } catch (error) {
+        console.error("Failed to fetch HR question:", error);
+        toast.error("Could not load question. Try again later.");
+      }
+    };
+
+    fetchQuestion();
+  }, []);
 
   const startRecording = async () => {
     try {
-      // Request microphone permission
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      // Reset audio chunks
       audioChunksRef.current = [];
-      
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
-      
+
       mediaRecorder.ondataavailable = (e) => {
         audioChunksRef.current.push(e.data);
       };
-      
+
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         setAudioBlob(audioBlob);
-        
-        // Create URL for audio playback
-        const audioURL = URL.createObjectURL(audioBlob);
-        setAudioURL(audioURL);
-        
-        // Clean up stream tracks
+        setAudioURL(URL.createObjectURL(audioBlob));
         stream.getTracks().forEach(track => track.stop());
       };
-      
-      // Start recording
+
       mediaRecorder.start();
       setIsRecording(true);
-      
-      // Start duration timer
+
       let seconds = 0;
       timerRef.current = setInterval(() => {
         seconds++;
         setRecordingDuration(seconds);
-        
-        // Auto-stop after 2 minutes (120 seconds)
         if (seconds >= 120) {
           stopRecording();
           toast.info("Recording stopped automatically (2 minute limit)");
         }
       }, 1000);
-      
     } catch (error) {
       console.error("Error accessing microphone:", error);
       toast.error("Could not access microphone. Please check permissions.");
     }
   };
-  
+
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      
-      // Clear timer
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      if (timerRef.current) clearInterval(timerRef.current);
     }
   };
-  
+
   const handleSubmit = async () => {
     if (!audioBlob) {
       toast.error("Please record your answer before submitting");
       return;
     }
-    
+
     setIsSubmitting(true);
-    
+
     try {
-      // In a real app, you would upload the audio to your server
-      // For this demo, we'll simulate an API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      toast.success("Your answer was submitted successfully!");
-      navigate('/');
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'candidate_audio.wav');
+
+      const response = await fetch('/evalverse/interview/eval', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success(`Submitted! Score: ${data.score}/10 - ${data.feedback}`);
+        navigate('/');
+      } else {
+        toast.error(data.error || "Submission failed");
+      }
     } catch (error) {
       console.error("Error submitting recording:", error);
       toast.error("Failed to submit recording. Please try again.");
@@ -105,7 +110,7 @@ const HRQuestion = () => {
       setIsSubmitting(false);
     }
   };
-  
+
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
@@ -118,16 +123,16 @@ const HRQuestion = () => {
         <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
           <CardTitle className="text-2xl font-bold">HR Interview Question</CardTitle>
         </CardHeader>
-        
+
         <CardContent className="p-6 space-y-6">
           <div className="bg-blue-50 p-6 rounded-lg border border-blue-100">
             <h3 className="text-xl font-medium text-gray-800 mb-2">Question:</h3>
             <p className="text-gray-700 text-lg">{hrQuestion}</p>
           </div>
-          
+
           <div className="bg-gray-50 p-6 rounded-lg border border-gray-100">
             <h3 className="text-lg font-medium text-gray-800 mb-4">Record Your Answer</h3>
-            
+
             {isRecording ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -140,12 +145,12 @@ const HRQuestion = () => {
                     <span className="text-gray-700">{formatTime(recordingDuration)}</span>
                   </div>
                 </div>
-                
+
                 <Progress value={Math.min((recordingDuration / 120) * 100, 100)} className="h-1" />
-                
-                <Button 
+
+                <Button
                   onClick={stopRecording}
-                  variant="outline" 
+                  variant="outline"
                   className="w-full border-red-200 hover:bg-red-50 text-red-600"
                 >
                   <MicOff className="mr-2 h-4 w-4" />
@@ -157,20 +162,18 @@ const HRQuestion = () => {
                 {audioURL ? (
                   <div className="space-y-3">
                     <audio src={audioURL} controls className="w-full" />
-                    
                     <div className="flex space-x-3">
-                      <Button 
-                        onClick={startRecording} 
-                        variant="outline" 
+                      <Button
+                        onClick={startRecording}
+                        variant="outline"
                         className="flex-1"
                       >
                         <Mic className="mr-2 h-4 w-4" />
                         Record Again
                       </Button>
-                      
-                      <Button 
-                        onClick={handleSubmit} 
-                        className="flex-1 bg-indigo-600 hover:bg-indigo-700" 
+                      <Button
+                        onClick={handleSubmit}
+                        className="flex-1 bg-indigo-600 hover:bg-indigo-700"
                         disabled={isSubmitting}
                       >
                         {isSubmitting ? (
@@ -188,8 +191,8 @@ const HRQuestion = () => {
                     </div>
                   </div>
                 ) : (
-                  <Button 
-                    onClick={startRecording} 
+                  <Button
+                    onClick={startRecording}
                     className="w-full bg-indigo-600 hover:bg-indigo-700"
                   >
                     <Mic className="mr-2 h-4 w-4" />
@@ -200,7 +203,7 @@ const HRQuestion = () => {
             )}
           </div>
         </CardContent>
-        
+
         <CardFooter className="bg-gray-50 p-4 border-t">
           <p className="text-sm text-gray-500">
             Please speak clearly and provide a detailed response to the question. You have up to 2 minutes for your answer.
